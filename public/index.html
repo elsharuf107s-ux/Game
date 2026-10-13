@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>REA Browser Workbench</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0b0f14; color: #e9eef5; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 18px 60px; }
+    .hero { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 24px; }
+    h1 { font-size: clamp(28px, 5vw, 46px); line-height: 1; margin: 0 0 10px; }
+    .sub { color: #9fb0c3; max-width: 720px; }
+    .badge { border: 1px solid #263241; border-radius: 999px; padding: 8px 12px; color: #b8c6d5; white-space: nowrap; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card { background: #111821; border: 1px solid #202b38; border-radius: 16px; padding: 18px; }
+    .card h2 { margin: 0 0 14px; font-size: 17px; }
+    label { display: block; color: #a8b7c7; font-size: 13px; margin: 12px 0 6px; }
+    input, select, textarea, button { width: 100%; font: inherit; }
+    input, select, textarea { background: #0c1219; color: #eef4fa; border: 1px solid #2a3746; border-radius: 10px; padding: 11px 12px; }
+    textarea { min-height: 120px; resize: vertical; }
+    button { margin-top: 12px; border: 0; border-radius: 10px; padding: 11px 14px; cursor: pointer; font-weight: 700; background: #e7eef7; color: #0a0f14; }
+    button.secondary { background: #1c2733; color: #dce6f0; border: 1px solid #2a3746; }
+    button:disabled { opacity: .55; cursor: wait; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #080d12; border: 1px solid #1d2732; border-radius: 12px; padding: 14px; min-height: 260px; max-height: 560px; overflow: auto; }
+    .wide { grid-column: 1 / -1; }
+    .status { font-size: 13px; color: #92a5b8; margin-top: 10px; min-height: 18px; }
+    .ok { color: #72d49b; }
+    .bad { color: #ff8c8c; }
+    .tiny { font-size: 12px; color: #8394a6; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } .hero { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="hero">
+      <div>
+        <h1>REA Browser Workbench</h1>
+        <div class="sub">Run Reverse Engineer Anything inside your GitHub Codespace, inspect uploaded targets, then ask OpenAI to explain the evidence.</div>
+      </div>
+      <div id="health" class="badge">Checking server…</div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>1. Upload target</h2>
+        <input id="file" type="file" />
+        <button id="uploadBtn">Upload into Codespace</button>
+        <div id="uploadStatus" class="status"></div>
+        <label for="target">Target path inside workspace</label>
+        <input id="target" placeholder="targets/example.asar" />
+        <div class="tiny">For JavaScript/Electron targets, .asar files or extracted app directories work best without extra native tooling.</div>
+      </section>
+
+      <section class="card">
+        <h2>2. Run REA</h2>
+        <label for="command">Command</label>
+        <select id="command">
+          <option value="analyze">analyze</option>
+          <option value="inspect">inspect</option>
+          <option value="search">search</option>
+          <option value="analyze-javascript-application">analyze-javascript-application</option>
+          <option value="doctor">doctor</option>
+          <option value="capabilities">capabilities</option>
+          <option value="providers">providers</option>
+        </select>
+        <label for="query">Search query (only for search)</label>
+        <input id="query" placeholder="offline, auth, networking…" />
+        <button id="runBtn">Run REA</button>
+        <div id="reaStatus" class="status"></div>
+      </section>
+
+      <section class="card wide">
+        <h2>REA output</h2>
+        <pre id="output">No REA output yet.</pre>
+      </section>
+
+      <section class="card wide">
+        <h2>3. Ask OpenAI</h2>
+        <textarea id="prompt" placeholder="Explain what this evidence says about how the target works. Point out uncertainty and the next useful thing to inspect."></textarea>
+        <button id="askBtn">Ask OpenAI using REA output</button>
+        <div id="aiStatus" class="status"></div>
+        <pre id="answer">No AI answer yet.</pre>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let lastReaOutput = '';
+
+    async function jsonFetch(url, options = {}) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function refreshHealth() {
+      try {
+        const data = await jsonFetch('/api/health');
+        $('health').textContent = data.openaiConfigured
+          ? `Port ${data.port} · OpenAI ready`
+          : `Port ${data.port} · add OPENAI_API_KEY`;
+        $('health').className = `badge ${data.openaiConfigured ? 'ok' : 'bad'}`;
+      } catch (err) {
+        $('health').textContent = err.message;
+        $('health').className = 'badge bad';
+      }
+    }
+
+    $('uploadBtn').addEventListener('click', async () => {
+      const file = $('file').files[0];
+      if (!file) return $('uploadStatus').textContent = 'Choose a file first.';
+      const form = new FormData();
+      form.append('target', file);
+      $('uploadBtn').disabled = true;
+      $('uploadStatus').textContent = 'Uploading…';
+      try {
+        const data = await jsonFetch('/api/upload', { method: 'POST', body: form });
+        $('target').value = data.path;
+        $('uploadStatus').textContent = `Uploaded ${data.name} (${Math.round(data.size / 1024)} KB)`;
+        $('uploadStatus').className = 'status ok';
+      } catch (err) {
+        $('uploadStatus').textContent = err.message;
+        $('uploadStatus').className = 'status bad';
+      } finally {
+        $('uploadBtn').disabled = false;
+      }
+    });
+
+    $('runBtn').addEventListener('click', async () => {
+      $('runBtn').disabled = true;
+      $('reaStatus').textContent = 'Running REA…';
+      $('reaStatus').className = 'status';
+      $('output').textContent = 'Working…';
+      try {
+        const data = await jsonFetch('/api/rea', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            command: $('command').value,
+            target: $('target').value,
+            query: $('query').value
+          })
+        });
+        lastReaOutput = [data.stdout, data.stderr].filter(Boolean).join('\n');
+        $('output').textContent = lastReaOutput || '(command completed with no output)';
+        $('reaStatus').textContent = 'REA command completed.';
+        $('reaStatus').className = 'status ok';
+      } catch (err) {
+        lastReaOutput = '';
+        $('output').textContent = err.message;
+        $('reaStatus').textContent = 'REA command failed.';
+        $('reaStatus').className = 'status bad';
+      } finally {
+        $('runBtn').disabled = false;
+      }
+    });
+
+    $('askBtn').addEventListener('click', async () => {
+      $('askBtn').disabled = true;
+      $('aiStatus').textContent = 'Calling OpenAI…';
+      $('answer').textContent = 'Working…';
+      try {
+        const data = await jsonFetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: $('prompt').value, reaOutput: lastReaOutput })
+        });
+        $('answer').textContent = data.text;
+        $('aiStatus').textContent = `Answered with ${data.model}.`;
+        $('aiStatus').className = 'status ok';
+      } catch (err) {
+        $('answer').textContent = err.message;
+        $('aiStatus').textContent = 'OpenAI request failed.';
+        $('aiStatus').className = 'status bad';
+      } finally {
+        $('askBtn').disabled = false;
+      }
+    });
+
+    refreshHealth();
+  </script>
+</body>
+</html>
