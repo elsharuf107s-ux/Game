@@ -1,0 +1,23 @@
+{
+  "name": "REA Browser Workbench",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-24-bookworm",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "REA Browser Workbench",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "secrets": {
+    "OPENAI_API_KEY": {
+      "description": "Your OpenAI API key. It is used only by the server inside this Codespace.",
+      "documentationUrl": "https://platform.openai.com/api-keys"
+    }
+  },
+  "containerEnv": {
+    "PORT": "3000",
+    "OPENAI_MODEL": "gpt-5-mini"
+  },
+  "postCreateCommand": "npm install && npx --no-install rea-agents doctor || true",
+  "postStartCommand": "nohup npm start > /tmp/rea-workbench.log 2>&1 &"
+}
