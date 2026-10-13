@@ -1,16 +1,22 @@
 {
-  "name": "REA Browser Workbench",
+  "name": "REA + Ghidra Browser Lab",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "24"
     }
   },
-  "forwardPorts": [3000],
+  "forwardPorts": [3000, 6080],
   "portsAttributes": {
     "3000": {
       "label": "REA Browser Workbench",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openBrowser",
+      "visibility": "private"
+    },
+    "6080": {
+      "label": "Ghidra Desktop (noVNC)",
+      "onAutoForward": "notify",
+      "visibility": "private"
     }
   },
   "secrets": {
@@ -21,8 +27,10 @@
   },
   "containerEnv": {
     "PORT": "3000",
-    "OPENAI_MODEL": "gpt-5-mini"
+    "OPENAI_MODEL": "gpt-5-mini",
+    "GHIDRA_INSTALL_DIR": "/opt/ghidra",
+    "REA_ANALYSIS_PROVIDER": "ghidra"
   },
-  "postCreateCommand": "npm install && npx --no-install rea-agents doctor || true",
-  "postStartCommand": "nohup npm start > /tmp/rea-workbench.log 2>&1 &"
+  "postCreateCommand": "bash scripts/setup-ghidra.sh && npm install && npm install --global rea-agents@latest && rea doctor --json || true",
+  "postStartCommand": "bash scripts/start-all.sh"
 }
