@@ -2,7 +2,7 @@
 set -euo pipefail
 
 GHIDRA_VERSION="12.1.4"
-GHIDRA_RELEASE="20250620"
+GHIDRA_RELEASE="20260921"
 GHIDRA_DIR="/opt/ghidra_${GHIDRA_VERSION}_PUBLIC"
 GHIDRA_ZIP="/tmp/ghidra.zip"
 GHIDRA_URL="https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_RELEASE}.zip"
